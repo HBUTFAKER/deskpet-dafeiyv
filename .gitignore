@@ -1,0 +1,38 @@
+# ---- 虚拟环境与缓存 ----
+.venv/
+__pycache__/
+*.pyc
+
+# ---- 运行时生成的日志与状态（含本地 token，切勿入库）----
+*.log
+host.log
+run.log
+quit.log
+launcher.log
+pids.json
+pet_lang.json
+pet_memory.json
+
+# ---- 本机私有配置（含你的 DeepSeek key）----
+config.local.json
+
+# ---- 大体积 / 可重新生成的资源 ----
+models/
+samples/
+samples_*/
+backup_dshpet/
+
+# ---- 开发期抠图 / 试听脚本（非运行必需）----
+_cut_icon.py
+_make_pick.py
+_make_samples.py
+_make_vv_samples.py
+_make_zh_samples.py
+_concat_samples.py
+make_samples.py
+
+# ---- 预览图（非运行必需）----
+fatuiyu_preview.png
+icon_preview.png
+fatuiyu_quit.ico
+icon_preview_quit.png
