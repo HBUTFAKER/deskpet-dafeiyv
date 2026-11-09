@@ -20,7 +20,12 @@ _ENV = {
     "node_dir": "WORKBUDDY_NODE_DIR",
     "voicevox_dir": "VOICEVOX_DIR",
     "dsh_pet_dir": "DSH_PET_DIR",
+    "pet_exe": "DSH_PET_EXE",
+    "pet_host": "DSH_PET_HOST",
 }
+
+# 示例配置里的中文说明只是占位，整份复制过去不能被当成有效值
+_PLACEHOLDER = ("（可选）", "（必填）", "你的 ", "留空", "例如")
 
 
 def _load_local():
@@ -37,11 +42,23 @@ def _load_local():
 _local = _load_local()
 
 
+def _valid(v):
+    if v is None:
+        return False
+    if isinstance(v, str):
+        v = v.strip()
+        return bool(v) and not v.startswith(_PLACEHOLDER)
+    return bool(v)
+
+
 def get(key, default=None):
-    if key in _ENV and os.environ.get(_ENV[key]):
-        return os.environ[_ENV[key]]
-    if key in _local and _local[key]:
-        return _local[key]
+    if key in _ENV:
+        v = os.environ.get(_ENV[key])
+        if _valid(v):
+            return v.strip()
+    v = _local.get(key)
+    if _valid(v):
+        return v.strip() if isinstance(v, str) else v
     return default
 
 
@@ -60,7 +77,41 @@ def detect_pythonw():
 
 
 def detect_dsh_pet_dir():
-    return os.path.expanduser("~/.dsh/profiles/web/node_modules/dsh-pet")
+    """插件本体：优先 DSH profile，其次 npm 全局安装的位置。
+
+    独立模式（dsh-pet-standalone）从 npm 全局目录加载，补丁脚本要改的就是这里。
+    """
+    p = os.path.expanduser("~/.dsh/profiles/web/node_modules/dsh-pet")
+    if os.path.isdir(p):
+        return p
+    for nd in sorted(glob.glob(os.path.expanduser("~/.workbuddy/binaries/node/versions/*"))):
+        if not os.path.isdir(nd):
+            continue
+        q = os.path.join(nd, "node_modules", "dsh-pet")
+        if os.path.isdir(q):
+            return q
+    return p
+
+
+def detect_pet_exe():
+    """独立桌宠入口：优先绿色包 dsh-pet.exe，其次 npm 全局装的 standalone.cmd。
+
+    两种形态都在 3080 端口提供 /dsh-pet-7340/state 与 /broadcast，
+    语音桥推气泡用的就是这套接口。
+    """
+    root = os.path.dirname(BASE)
+    exe = sorted(glob.glob(os.path.join(root, "runtime", "**", "dsh-pet.exe"),
+                           recursive=True))
+    if exe:
+        return exe[0]
+    for nd in sorted(glob.glob(os.path.expanduser("~/.workbuddy/binaries/node/versions/*"))):
+        if not os.path.isdir(nd):
+            continue
+        for name in ("dsh-pet-standalone.cmd", "dsh-pet-standalone"):
+            p = os.path.join(nd, name)
+            if os.path.isfile(p):
+                return p
+    return None
 
 
 # ------------------------------------------------------------ 对外接口
@@ -82,3 +133,11 @@ def dsh_pet_dir():
 
 def pythonw():
     return detect_pythonw()
+
+
+def pet_exe():
+    return get("pet_exe") or detect_pet_exe()
+
+
+def pet_host():
+    return get("pet_host") or "http://127.0.0.1:3080"

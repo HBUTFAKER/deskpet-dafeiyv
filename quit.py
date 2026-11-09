@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""大肥鱼一键退出：语音桥 → 桌宠窗口 → 宿主服务 → 日语引擎。
+"""大肥鱼一键退出：桌宠宿主 → 语音桥 → 日语引擎 → 桌宠窗口 → 启动器。
 
-桌面「退出大肥鱼」直连这个脚本（pythonw 无窗口运行）。
 匹配命令行而不是进程名，免得误杀别的 python / node / electron。
+独立模式下 standalone.js 是宿主，必须先死，否则它会把桌面窗口重新拉起来。
 """
 import os
 import sys
@@ -10,22 +10,24 @@ import time
 
 import psutil
 
+import config
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 LOG = os.path.join(BASE, "quit.log")
 
-# 顺序有意义：**宿主必须第一个死**。
-# dsh-pet 的 HelperProcess 在子进程退出时会 scheduleRestart() 把窗口重新拉起来，
-# 所以先杀窗口 = 立刻被复活（表现为「关了又出现」）。
+VV_EXE = os.path.join(config.voicevox_dir() or "", "run.exe")
+
 TARGETS = [
-    ("启动器", "pet-voice\\launcher.py"),
-    ("宿主服务", "@deepseek-ai\\dsh\\lib\\bin.js"),
-    ("桌宠窗口", "\\.dsh\\electron\\electron.exe"),
+    ("桌宠宿主", os.path.join("dsh-pet", "lib", "standalone.js")),
     ("语音桥", "pet_voice.py"),
-    ("日语引擎", "voicevox\\windows-cpu\\run.exe"),
+    ("菜单桥", "pet_menu.py"),
+    ("日语引擎", VV_EXE),
+    ("桌宠窗口", os.path.join(".dsh", "electron", "electron.exe")),
+    ("启动器", os.path.join(BASE, "launcher.py")),
 ]
 
 # 宿主死后给它的重启逻辑一点时间走完，再补刀窗口
-SETTLE = {"宿主服务": 1.2}
+SETTLE = {"桌宠宿主": 1.2}
 
 
 def log(msg):
@@ -39,6 +41,8 @@ def log(msg):
 
 def find_like(pattern):
     hit = []
+    if not pattern:
+        return hit
     for p in psutil.process_iter(["pid", "cmdline"]):
         try:
             cmd = " ".join(p.info.get("cmdline") or [])

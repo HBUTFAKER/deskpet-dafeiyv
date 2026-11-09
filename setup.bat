@@ -15,7 +15,7 @@ if not defined PW (
     where python >nul 2>nul && set "PW=python.exe"
 )
 if not defined PW (
-    echo [错误] 没找到 Python。请先安装 WorkBuddy（会自带 Python），或自行安装 Python 3.11+。
+    echo [错误] 没找到 Python。请安装 WorkBuddy 或 Python 3.12+。
     pause
     exit /b 1
 )
@@ -30,32 +30,49 @@ if not exist ".venv\Scripts\python.exe" (
 )
 call .venv\Scripts\activate.bat
 
-REM 3) 装依赖
-echo 安装依赖（可能要一两分钟）...
-python -m pip install --upgrade pip >nul
-pip install -r requirements.txt
+REM 3) 装依赖（默认源在本机代理下会卡住，走清华镜像）
+echo 安装依赖 ...
+python -m pip install --upgrade pip -q
+pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple --timeout 20 --retries 1
 if errorlevel 1 (
     echo [错误] 依赖安装失败，检查网络后重试。
     pause
     exit /b 1
 )
 
-REM 4) 生成桌面图标
-echo 生成桌面快捷方式「蓝色大肥鱼」...
-python _make_lnk.py
+REM 4) 独立桌宠：dsh-pet standalone（不依赖已下线的 dsh web 宿主）
+set "ND="
+for /d %%d in ("%USERPROFILE%\.workbuddy\binaries\node\versions\*") do set "ND=%%d"
+if defined ND (
+    if not exist "%ND%\dsh-pet-standalone.cmd" (
+        echo 安装独立桌宠 dsh-pet ...
+        call "%ND%\npm.cmd" install -g dsh-pet@0.4.7 --registry=https://registry.npmmirror.com
+    )
+) else (
+    echo [警告] 没找到 WorkBuddy 自带 Node，桌宠窗口需自行安装 dsh-pet。
+)
 
-REM 5) 给 dsh-pet 打补丁（右键退出 / 语言切换 / 聊天框语言跟随）
-echo.
-echo 正在给 dsh-pet 打补丁（若还没装 dsh-pet 会失败，可稍后手动跑 patch_all.py）...
-python patch_all.py || echo [提示] 补丁未应用，确认已安装 dsh-pet 插件后重新运行 patch_all.py 即可。
+REM 5) 语音识别模型（本地没有就从镜像直连拉，约 460MB）
+if not exist "models\whisper-small\model.bin" (
+    echo 下载 whisper-small ...
+    if not exist "models\whisper-small" mkdir "models\whisper-small"
+    for %%f in (config.json model.bin tokenizer.json vocabulary.txt) do (
+        curl -sSL --max-time 600 -o "models\whisper-small\%%f" "https://hf-mirror.com/Systran/faster-whisper-small/resolve/main/%%f"
+    )
+) else (
+    echo 语音识别模型已存在，跳过
+)
+
+REM 6) 桌面图标
+echo 生成桌面快捷方式 ...
+python _make_lnk.py
 
 echo.
 echo ============================================================
-echo   安装完成！
+echo   安装完成
 echo   · 双击桌面「蓝色大肥鱼」启动
-echo   · 右键屏幕上的鱼本体 -> 退出大肥鱼
-echo   · 右键鱼本体 -> 切换语言（中 / 日）
-echo   · 首次运行请把 config.example.json 复制为 config.local.json
-echo     填上你自己的 DeepSeek API Key（或设置环境变量 DEEPSEEK_API_KEY）
+echo   · 首次运行前把 config.local.json 的 api_key 填上自己的 DeepSeek Key
+echo     （或设环境变量 DEEPSEEK_API_KEY）
+echo   · 退出：运行 quit.py；切语言：说「说日语 / 说中文」
 echo ============================================================
 pause

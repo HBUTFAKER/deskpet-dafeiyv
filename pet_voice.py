@@ -36,9 +36,6 @@ except Exception:
 
 import numpy as np
 
-OLD_DIR = r"C:\Users\29212\WorkBuddy\2026-10-17-02-39-38\dafeiyu-pet"
-sys.path.insert(0, OLD_DIR)
-
 import sounddevice as sd
 import pygame
 from faster_whisper import WhisperModel
@@ -130,9 +127,22 @@ def wake_tokens():
 
 
 # 桌宠气泡：说话时把同一句文字推到桌宠身上那个白气泡里（顺带触发它的说话动作）。
-# 走 dsh-pet 自带的 broadcast 端点——它内部就是写 pets.<id>.say，渲染层 1s 内取到并弹泡。
-PET_HOST = os.environ.get("DSH_PET_HOST", "http://127.0.0.1:3080")
+# 走 dsh-pet 的 broadcast 端点——它内部就是写 pets.<id>.say，渲染层 1s 内取到并弹泡。
+# 0.4.7 独立模式要求 surface 参数 + 本机令牌（写在 standalone-runtime.json）；
+# 老版插件模式没有这个文件，就退回不带令牌的原行为。
+PET_HOST = config.pet_host()
 BUBBLE_URL = os.environ.get("DSH_PET_BUBBLE_URL", PET_HOST + "/dsh-pet-7340/broadcast")
+PET_ID = os.environ.get("DSH_PET_ID", "main")
+RUNTIME_FILE = os.path.expanduser("~/.dsh/dsh-pet/standalone-runtime.json")
+
+
+def _pet_token():
+    """读独立模式的本机访问令牌；插件模式没有这个文件就返回空串。"""
+    try:
+        with open(RUNTIME_FILE, encoding="utf-8") as f:
+            return (json.load(f) or {}).get("token") or ""
+    except Exception:
+        return ""
 
 # ---------------- 共享状态 ----------------
 _gen = 0                     # TTS 代次：递增即打断
@@ -245,9 +255,13 @@ def show_bubble(text):
         return
     time.sleep(0.12)                       # 让 TTS 先抢到播放通道，气泡这边稍后一拍，看着更同步
     body = json.dumps({"text": text}, ensure_ascii=False).encode("utf-8")
-    req = urllib.request.Request(BUBBLE_URL, data=body,
-                                 headers={"Content-Type": "application/json"},
-                                 method="POST")
+    sep = "&" if "?" in BUBBLE_URL else "?"
+    url = f"{BUBBLE_URL}{sep}pet={PET_ID}&surface=desktop"
+    headers = {"Content-Type": "application/json"}
+    tok = _pet_token()
+    if tok:
+        headers["x-dsh-pet-token"] = tok
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=2.0) as r:
             r.read(200)
@@ -378,6 +392,10 @@ def ask_deepseek(user_text):
     日文交给 TTS 念，中文推到气泡——瑞哥听日语、看中文。
     """
     pack = L.pack()
+    if not API_KEY:
+        log("LLM", "没配 DeepSeek API Key：填 config.local.json 的 api_key 或设环境变量 DEEPSEEK_API_KEY")
+        err = pack.get("net_error") or "网络好像不听使唤，等我一下下。"
+        return err, err
     msgs = [{"role": "system", "content": pack["system"] + _facts_context() + L.now_context()}]
     with _hist_lock:
         msgs.extend(_history[-16:])
@@ -698,7 +716,7 @@ def main():
     get_pool()      # 预热中文 TTS 长连接
     if L.mode() == "ja":
         try:
-            get_pool(L.pack("ja")["voice"])    # 日语那条也先热上
+            get_pool(L.pack("ja"))    # 日语那条也先热上
         except Exception:
             pass
     log("BOOT", "TTS 连接已预热")
